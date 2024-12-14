@@ -1,93 +1,94 @@
 import * as THREE from 'three';
 
-export class Player{
+export class Player {
     static rotSpeed = 2;
     static moveSpeed = 2;
+    static smoothingFactor = 10; // Higher value = smoother transition
 
-    constructor(game, r, c, dir=0){
+    constructor(game, r, c, dir = 0) {
         this.game = game;
-        
-        // the grid position player occupies
+
+        // The grid position player occupies
         this.r = r;
         this.c = c;
-        
-        // the actual world position player occupies
+
+        // The actual world position player occupies
         this.r_ = r;
         this.c_ = c;
 
-        // the direction player is pointed in 
+        // The direction player is pointed in (in radians)
         this.dir = dir;
 
-        // player mesh
-        this.geometry = new THREE.SphereGeometry(0.5,10,10);
+        // Target positions for smooth interpolation
+        this.target_r_ = r;
+        this.target_c_ = c;
+
+        // Target direction for smooth rotation
+        this.targetDir = dir;
+
+        // Player mesh
+        this.geometry = new THREE.SphereGeometry(0.3, 10, 10);
         this.material = new THREE.MeshStandardMaterial({
             color: 0xffff00,
             emissive: 0xffff00,
             emissiveIntensity: 1.45,
             roughness: 0.5,
-            metalness: 0.3
+            metalness: 0.3,
         });
         this.mesh = new THREE.Mesh(this.geometry, this.material);
     }
 
-    gridCell(r, c){
-        // check whether to round up or down (JS is funky with % to be careful)
+    gridCell(r, c) {
         return [Math.round(r), Math.round(c)];
     }
 
-    rotateLeft(dt){
-        this.dir -= Player.rotSpeed * dt; 
+    rotateLeft(dt) {
+        this.targetDir -= Player.rotSpeed * dt;
     }
 
-    rotateRight(dt){
-        this.dir += Player.rotSpeed * dt;
+    rotateRight(dt) {
+        this.targetDir += Player.rotSpeed * dt;
     }
 
-    // MAKE THE MOVEMENT BETTER!!!
-    moveForward(dt){
-        // check position if moved in 
-        let nr_ = this.r_ + Math.sin(this.dir) * Player.moveSpeed * dt;
-        let nc_ = this.c_ + Math.cos(this.dir) * Player.moveSpeed * dt;
-        let [nr, nc] = this.gridCell(nr_, nc_);
+    moveForward(dt) {
+        const newTargetR_ = this.target_r_ + Math.sin(this.dir) * Player.moveSpeed * dt;
+        const newTargetC_ = this.target_c_ + Math.cos(this.dir) * Player.moveSpeed * dt;
+        const [newR, newC] = this.gridCell(newTargetR_, newTargetC_);
 
-        //console.log("At r ", this.r, " c ", this.c);
-        //console.log("At r_", this.r_, " c_ ", this.c_);
-        //console.log("At nr ", nr, " c ", nc);
-        //console.log("At nr_", nr_, " c_ ", nc_);
+        if (this.game.isWall(newR, newC)) return;
 
-        // if wall exit else move (need extra range else clips a little into it)
-        if (this.game.isWall(nr, nc)) return;
-        
-        // tell the game the player moved
-        let movedCell = (nr != this.r || nc != this.c);
-
-        // update positions
-        this.r_ = nr_;
-        this.c_ = nc_;
-        this.r = nr;
-        this.c = nc;
-
-        if (movedCell) this.game.playerMoved(this);
+        // Update target positions
+        this.target_r_ = newTargetR_;
+        this.target_c_ = newTargetC_;
     }
 
-    moveBackward(dt){
-        // check position if moved in 
-        let nr_ = this.r_ - Math.sin(this.dir) * Player.moveSpeed * dt;
-        let nc_ = this.c_ - Math.cos(this.dir) * Player.moveSpeed * dt;
-        let [nr, nc] = this.gridCell(nr_, nc_);
+    moveBackward(dt) {
+        const newTargetR_ = this.target_r_ - Math.sin(this.dir) * Player.moveSpeed * dt;
+        const newTargetC_ = this.target_c_ - Math.cos(this.dir) * Player.moveSpeed * dt;
+        const [newR, newC] = this.gridCell(newTargetR_, newTargetC_);
 
-        // if wall exit else move (need extra range else clips a little into it)
-        if (this.game.isWall(nr, nc)) return;
-        
-        // tell the game the player moved
-        let movedCell = (nr != this.r || nc != this.c);
+        if (this.game.isWall(newR, newC)) return;
 
-        // update positions
-        this.r_ = nr_;
-        this.c_ = nc_;
-        this.r = nr;
-        this.c = nc;
+        // Update target positions
+        this.target_r_ = newTargetR_;
+        this.target_c_ = newTargetC_;
+    }
 
-        if (movedCell) this.game.playerMoved(this);
+    updatePosition(dt) {
+        // Smoothly interpolate positions
+        this.r_ += (this.target_r_ - this.r_) * Player.smoothingFactor * dt;
+        this.c_ += (this.target_c_ - this.c_) * Player.smoothingFactor * dt;
+
+        // Snap to grid position if close enough
+        const [gridR, gridC] = this.gridCell(this.r_, this.c_);
+        if (Math.abs(this.r_ - gridR) < 0.05 && Math.abs(this.c_ - gridC) < 0.05) {
+            this.r = gridR;
+            this.c = gridC;
+            this.r_ = gridR;
+            this.c_ = gridC;
+        }
+
+        // Smoothly interpolate rotation
+        this.dir += (this.targetDir - this.dir) * Player.smoothingFactor * dt;
     }
 }
